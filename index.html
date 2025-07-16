@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인물도감 (Character Matrix)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Export Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* 커스텀 폰트 클래스 */
+        .font-dohyeon { font-family: 'Do Hyeon', sans-serif; }
+        .font-noto { font-family: 'Noto Sans KR', sans-serif; }
+
+        /* 어린왕자 테마 배경 */
+        body {
+            background-color: #E3F2FD; /* 옅은 하늘색 */
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(255, 255, 255, 0.3) 1px, transparent 0),
+                radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.3) 1px, transparent 0),
+                radial-gradient(circle at 50% 90%, rgba(255, 255, 255, 0.3) 2px, transparent 0),
+                radial-gradient(circle at 20% 70%, rgba(255, 255, 255, 0.3) 1px, transparent 0),
+                radial-gradient(circle at 90% 30%, rgba(255, 255, 255, 0.3) 1px, transparent 0);
+            background-size: 100px 100px, 120px 120px, 80px 80px, 150px 150px, 90px 90px;
+        }
+        
+        /* 레이아웃 및 디자인 */
+        .main-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 1rem;
+            width: 100%;
+            max-width: 1100px;
+            height: 750px;
+            margin: 1rem auto 2rem auto; /* 상단 마진 줄이고 하단 마진 추가 */
+        }
+
+        .grid-item {
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 2px solid #BBDEFB; /* 파스텔 블루 */
+            border-radius: 1rem;
+            padding: 1rem;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+        .grid-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 각 섹션의 위치 지정 */
+        #appearance-box { grid-area: 1 / 1 / 3 / 2; }
+        #taste-box { grid-area: 1 / 4 / 3 / 5; }
+        #personality-box { grid-area: 3 / 1 / 5 / 2; }
+        #color-box { 
+            grid-area: 3 / 4 / 5 / 5; 
+            justify-content: space-between;
+        }
+        #quote-box { grid-area: 4 / 2 / 5 / 4; }
+        #canvas-wrapper { 
+            grid-area: 1 / 2 / 4 / 4;
+            padding: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        textarea {
+            flex-grow: 1;
+            background-color: transparent;
+            border: none;
+            resize: none;
+            outline: none;
+            width: 100%;
+            height: 100%;
+            font-size: 1rem;
+            color: #37474F;
+        }
+        textarea::placeholder {
+            color: #90A4AE;
+        }
+
+        .title-text {
+            color: #1E88E5; /* 좀 더 선명한 블루 */
+            font-weight: 700;
+        }
+        
+        /* 캔버스 스타일 */
+        #silhouette-canvas, #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #drawing-canvas {
+            cursor: crosshair;
+            z-index: 10;
+        }
+        
+        /* 컨트롤 버튼 스타일 */
+        .control-btn {
+            transition: all 0.2s ease-in-out;
+            font-weight: 700;
+            color: #455A64;
+            border: 1px solid transparent;
+        }
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0,0,0,0.1);
+        }
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .tool-btn.active {
+            background-color: #42A5F5;
+            color: white;
+            border-color: #1976D2;
+        }
+        .color-picker.active {
+            transform: scale(1.2);
+            border: 2px solid #42A5F5;
+        }
+        #custom-color-picker {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #custom-color-picker::-webkit-color-swatch {
+            border-radius: 50%;
+            border: 2px solid #ccc;
+        }
+        #custom-color-picker::-moz-color-swatch {
+            border-radius: 50%;
+            border: 2px solid #ccc;
+        }
+        
+        /* 모바일 반응형 레이아웃 */
+        @media (max-width: 768px) {
+            .main-container {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                margin: 1rem;
+            }
+            #canvas-wrapper {
+                order: -1; /* 캔버스를 맨 위로 */
+                height: 400px;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body class="font-noto text-gray-800">
+
+    <div class="container mx-auto p-4">
+        <div id="capture-area">
+            <!-- 헤더 -->
+            <header class="flex justify-between items-center my-6 md:my-8">
+                <img src="https://i.ibb.co/hjj1JJs/1.png" alt="인물도감 타이틀" class="h-20 sm:h-24 md:h-28">
+                <div id="header-controls" class="flex items-center space-x-2 sm:space-x-4">
+                     <!-- 실행 취소 / 되살리기 -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-bold text-gray-600 hidden md:inline" data-lang-key="history">작업 내역</span>
+                        <button id="undo-btn" class="control-btn p-2 rounded-full bg-white hover:bg-gray-100 shadow-sm" title="실행 취소 (Ctrl+Z)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg>
+                        </button>
+                        <button id="redo-btn" class="control-btn p-2 rounded-full bg-white hover:bg-gray-100 shadow-sm" title="되살리기 (Ctrl+Shift+Z)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966a.25.25 0 0 1 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="h-8 w-px bg-gray-300 hidden md:block"></div>
+
+                    <select id="lang-selector" class="bg-white border border-gray-300 rounded-md py-1 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        <option value="KOR">KOR</option>
+                        <option value="ENG">ENG</option>
+                    </select>
+                    <button id="download-json-btn" title="Save data as JSON" class="p-2 rounded-full bg-white hover:bg-gray-100 shadow-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </button>
+                    <button id="upload-json-btn" title="Load data from JSON" class="p-2 rounded-full bg-white hover:bg-gray-100 shadow-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </button>
+                    <input type="file" id="json-upload-input" accept=".json" class="hidden">
+                </div>
+            </header>
+
+            <!-- 메인 콘텐츠 -->
+            <main>
+                <div class="text-center mb-4">
+                    <input type="text" id="character-name" data-lang-placeholder="placeholder_char_name" class="text-3xl font-dohyeon text-center bg-transparent border-b-2 border-gray-300 focus:border-blue-500 outline-none p-2 w-full max-w-md">
+                </div>
+                <div class="main-container">
+                    <div id="appearance-box" class="grid-item">
+                        <h2 class="text-2xl font-dohyeon title-text mb-2" data-lang-key="appearance">외모</h2>
+                        <textarea data-id="appearance" class="font-noto" data-lang-placeholder="placeholder_appearance"></textarea>
+                    </div>
+                    <div id="taste-box" class="grid-item">
+                        <h2 class="text-2xl font-dohyeon title-text mb-2" data-lang-key="taste">취향</h2>
+                        <textarea data-id="taste" class="font-noto" data-lang-placeholder="placeholder_taste"></textarea>
+                    </div>
+                    <div id="personality-box" class="grid-item">
+                        <h2 class="text-2xl font-dohyeon title-text mb-2" data-lang-key="personality">성격</h2>
+                        <textarea data-id="personality" class="font-noto" data-lang-placeholder="placeholder_personality"></textarea>
+                    </div>
+                    <div id="color-box" class="grid-item">
+                        <div>
+                            <h2 class="text-2xl font-dohyeon title-text mb-2" data-lang-key="color">색</h2>
+                            <textarea data-id="color" class="font-noto h-24" data-lang-placeholder="placeholder_color"></textarea>
+                        </div>
+                        <div id="color-box-palette" class="mt-auto">
+                           <!-- 색상 팔레트 (작은 버전) -->
+                        </div>
+                    </div>
+                    <div id="quote-box" class="grid-item">
+                        <h2 class="text-2xl font-dohyeon title-text mb-2" data-lang-key="quote">핵심대사</h2>
+                        <textarea data-id="quote" class="font-noto" data-lang-placeholder="placeholder_quote"></textarea>
+                    </div>
+
+                    <!-- 캔버스 영역 -->
+                    <div id="canvas-wrapper" class="grid-item">
+                        <canvas id="silhouette-canvas"></canvas>
+                        <canvas id="drawing-canvas"></canvas>
+                    </div>
+                </div>
+            </main>
+        </div>
+        
+        <!-- 캔버스 컨트롤 -->
+        <div id="controls" class="flex flex-col items-center space-y-4 my-4 p-4 bg-white/90 rounded-2xl shadow-lg max-w-4xl mx-auto">
+            <div class="flex w-full justify-around items-start flex-wrap gap-4">
+                <!-- 도구 선택 -->
+                <div class="flex flex-col items-center">
+                    <span class="text-sm font-bold text-gray-600 mb-2" data-lang-key="tools">도구</span>
+                    <div class="flex space-x-2">
+                        <button id="brush-btn" class="tool-btn control-btn px-4 py-2 rounded-full bg-gray-200 shadow-sm flex items-center space-x-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22l-8-8 8-8 8 8-8 8z"/><path d="M12 2v6"/><path d="M20 12h-6"/></svg>
+                            <span data-lang-key="brush">브러쉬</span>
+                        </button>
+                        <button id="eraser-btn" class="tool-btn control-btn px-4 py-2 rounded-full bg-gray-200 shadow-sm flex items-center space-x-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20l-5-5m0 0l5-5-5 5-5-5 5 5z"/><path d="M5.5 5.5A7.5 7.5 0 0016.5 16.5"/></svg>
+                            <span data-lang-key="eraser">지우개</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- 브러쉬 크기 -->
+                <div class="flex flex-col items-center">
+                    <span class="text-sm font-bold text-gray-600 mb-2" data-lang-key="brushSize">브러쉬 크기</span>
+                    <input type="range" id="brush-size" min="1" max="50" value="5" class="w-32">
+                </div>
+                <!-- 이미지 관리 -->
+                <div class="flex flex-col items-center">
+                    <span class="text-sm font-bold text-gray-600 mb-2" data-lang-key="changeImage">이미지 관리</span>
+                    <div class="flex space-x-2">
+                        <button id="upload-image-btn" class="control-btn px-3 py-2 rounded-full bg-purple-400 text-white shadow-sm flex items-center space-x-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/><path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/></svg>
+                            <span data-lang-key="upload">업로드</span>
+                        </button>
+                        <button id="delete-image-btn" class="control-btn px-3 py-2 rounded-full bg-red-400 text-white shadow-sm flex items-center space-x-2 hidden">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.636 8.636a.5.5 0 0 1 .5.5v3.5a.5.5 0 0 1-1 0v-3.5a.5.5 0 0 1 .5-.5z"/><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zM2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/><path d="M5.012 5.2a.5.5 0 0 1 .493.493l-.002 2.6c0 .276-.224.5-.5.5s-.5-.224-.5-.5l.002-2.6a.5.5 0 0 1 .493-.493zM10.988 5.2a.5.5 0 0 1 .493.493l-.002 2.6c0 .276-.224.5-.5.5s-.5-.224-.5-.5l.002-2.6a.5.5 0 0 1 .493-.493z"/></svg>
+                            <span data-lang-key="deleteImage">기본값</span>
+                        </button>
+                    </div>
+                    <input type="file" id="image-upload-input" class="hidden" accept="image/*">
+                </div>
+            </div>
+             <!-- 색상 팔레트 -->
+            <div class="w-full mt-4">
+                <div id="main-color-palette" class="flex flex-wrap justify-center items-center gap-2 p-2">
+                    <!-- 메인 색상 팔레트 (브러쉬용) -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 내보내기 버튼 -->
+        <div id="export-buttons" class="flex justify-center space-x-4 my-6">
+            <button id="export-png-btn" class="control-btn px-6 py-3 bg-green-500 text-white font-bold rounded-full shadow-lg" data-lang-key="exportPng">PNG로 내보내기</button>
+            <button id="export-pdf-btn" class="control-btn px-6 py-3 bg-blue-500 text-white font-bold rounded-full shadow-lg" data-lang-key="exportPdf">PDF로 내보내기</button>
+            <button id="export-txt-btn" class="control-btn px-6 py-3 bg-gray-500 text-white font-bold rounded-full shadow-lg" data-lang-key="exportTxt">TXT로 내보내기</button>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <footer class="text-center p-4 mt-8">
+        <a href="https://litt.ly/chichiboo" target="_blank" class="text-gray-600 hover:text-blue-500 transition-colors" data-lang-key="footer">
+            Created by. 교육뮤지컬 꿈꾸는 치수쌤
+        </a>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const langData = {
+                "KOR": {
+                    appearance: "외모", taste: "취향", personality: "성격", color: "색", quote: "핵심대사",
+                    placeholder_appearance: "인물은 어떤 모습일까요?", placeholder_taste: "무엇을 좋아하고 싫어하나요?", placeholder_personality: "어떤 성격을 가지고 있나요?", placeholder_color: "인물은 어떤 색으로 표현할 수 있나요?", placeholder_quote: "인물을 가장 잘 나타내는 대사는 무엇인가요?",
+                    placeholder_char_name: "인물 이름을 입력하세요",
+                    tools: "도구", brush: "브러쉬", eraser: "지우개", brushSize: "브러쉬 크기",
+                    changeImage: "이미지 관리", upload: "업로드", deleteImage: "기본값", history: "작업 내역",
+                    exportPng: "PNG로 내보내기", exportPdf: "PDF로 내보내기", exportTxt: "TXT로 내보내기",
+                    footer: "Created by. 교육뮤지컬 꿈꾸는 치수쌤"
+                },
+                "ENG": {
+                    appearance: "Appearance", taste: "Taste", personality: "Personality", color: "Color", quote: "Key Quote",
+                    placeholder_appearance: "What does the character look like?", placeholder_taste: "What are their likes and dislikes?", placeholder_personality: "What is their personality like?", placeholder_color: "What color can represent the character?", placeholder_quote: "What is a key quote that represents them?",
+                    placeholder_char_name: "Enter character's name",
+                    tools: "Tools", brush: "Brush", eraser: "Eraser", brushSize: "Brush Size",
+                    changeImage: "Image Manage", upload: "Upload", deleteImage: "Default", history: "History",
+                    exportPng: "Export as PNG", exportPdf: "Export as PDF", exportTxt: "Export as TXT",
+                    footer: "Created by. Chichiboo, the dreaming education&musicals"
+                }
+            };
+
+            const langSelector = document.getElementById('lang-selector');
+            const elementsToTranslate = document.querySelectorAll('[data-lang-key]');
+            const placeholderElements = document.querySelectorAll('[data-lang-placeholder]');
+
+            const silhouetteCanvas = document.getElementById('silhouette-canvas');
+            const drawingCanvas = document.getElementById('drawing-canvas');
+            const canvasWrapper = document.getElementById('canvas-wrapper');
+            const silhouetteCtx = silhouetteCanvas.getContext('2d');
+            const drawingCtx = drawingCanvas.getContext('2d');
+            
+            const brushSizeInput = document.getElementById('brush-size');
+            const mainColorPalette = document.getElementById('main-color-palette');
+            const colorBoxPalette = document.getElementById('color-box-palette');
+            const brushBtn = document.getElementById('brush-btn');
+            const eraserBtn = document.getElementById('eraser-btn');
+            const uploadImageBtn = document.getElementById('upload-image-btn');
+            const imageUploadInput = document.getElementById('image-upload-input');
+            const deleteImageBtn = document.getElementById('delete-image-btn');
+            const undoBtn = document.getElementById('undo-btn');
+            const redoBtn = document.getElementById('redo-btn');
+            const characterNameInput = document.getElementById('character-name');
+
+            let isDrawing = false;
+            let lastX = 0;
+            let lastY = 0;
+            let activeTool = null; // 초기에는 아무 도구도 선택되지 않음
+            let activeColor = '#000000';
+            
+            let history = [];
+            let historyStep = -1;
+            
+            const DEFAULT_SILHOUETTE_SRC = 'https://i.ibb.co/j9sGK1Bs/3.png';
+            const silhouetteImage = new Image();
+            silhouetteImage.crossOrigin = "Anonymous";
+            silhouetteImage.onload = () => {
+                resizeCanvases();
+                updateDeleteBtnVisibility();
+            };
+            silhouetteImage.src = DEFAULT_SILHOUETTE_SRC;
+
+            const colorList = ['#000000', '#FFFFFF', '#EF5350', '#EC407A', '#AB47BC', '#7E57C2', '#42A5F5', '#26C6DA', '#66BB6A', '#FFEE58', '#FFA726', '#8D6E63'];
+
+            function createColorPickers(paletteElement, onColorSelect) {
+                paletteElement.innerHTML = '';
+                colorList.forEach(color => {
+                    const picker = document.createElement('button');
+                    picker.className = 'color-picker control-btn w-8 h-8 rounded-full border-2 shadow-md';
+                    picker.style.backgroundColor = color;
+                    picker.dataset.color = color;
+                    if (color === '#FFFFFF') picker.style.borderColor = '#ccc';
+                    picker.addEventListener('click', () => onColorSelect(color, picker));
+                    paletteElement.appendChild(picker);
+                });
+            }
+            
+            createColorPickers(mainColorPalette, (color, picker) => {
+                activeColor = color;
+                document.querySelectorAll('#main-color-palette .color-picker.active').forEach(p => p.classList.remove('active'));
+                picker.classList.add('active');
+                if (activeTool !== 'brush') {
+                    setActiveTool('brush');
+                } else {
+                    setupBrush();
+                }
+            });
+
+            function createColorBoxPalette() {
+                colorBoxPalette.innerHTML = ''; // Clear previous
+                
+                const gridContainer = document.createElement('div');
+                gridContainer.className = 'grid grid-cols-6 gap-2';
+
+                colorList.forEach(color => {
+                    const picker = document.createElement('button');
+                    picker.className = 'w-6 h-6 rounded-full border shadow-sm';
+                    picker.style.backgroundColor = color;
+                    if (color === '#FFFFFF') picker.style.borderColor = '#ccc';
+                    picker.addEventListener('click', () => {
+                        document.getElementById('color-box').style.borderColor = color;
+                        document.getElementById('color-box').style.borderWidth = '4px';
+                    });
+                    gridContainer.appendChild(picker);
+                });
+                colorBoxPalette.appendChild(gridContainer);
+                
+                const resetContainer = document.createElement('div');
+                resetContainer.className = 'flex justify-center items-center mt-2 gap-2';
+
+                // Add custom color input
+                const customColorInput = document.createElement('input');
+                customColorInput.type = 'color';
+                customColorInput.id = 'custom-color-picker';
+                customColorInput.value = '#BBDEFB';
+                customColorInput.addEventListener('input', (e) => {
+                    document.getElementById('color-box').style.borderColor = e.target.value;
+                    document.getElementById('color-box').style.borderWidth = '4px';
+                });
+                resetContainer.appendChild(customColorInput);
+
+                // Add reset button for color box border
+                const resetColorBtn = document.createElement('button');
+                resetColorBtn.className = 'w-6 h-6 rounded-full border shadow-sm flex items-center justify-center bg-gray-200';
+                resetColorBtn.title = '기본 테두리 색상으로';
+                resetColorBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg>`;
+                resetColorBtn.addEventListener('click', () => {
+                    const colorBox = document.getElementById('color-box');
+                    colorBox.style.borderColor = '#BBDEFB';
+                    colorBox.style.borderWidth = '2px';
+                });
+                resetContainer.appendChild(resetColorBtn);
+                colorBoxPalette.appendChild(resetContainer);
+            }
+            createColorBoxPalette();
+
+            function resizeCanvases() {
+                const rect = canvasWrapper.getBoundingClientRect();
+                const currentDrawing = drawingCanvas.toDataURL();
+
+                [silhouetteCanvas, drawingCanvas].forEach(c => {
+                    c.width = rect.width;
+                    c.height = rect.height;
+                });
+                
+                drawSilhouette();
+
+                const img = new Image();
+                img.onload = () => {
+                    drawingCtx.drawImage(img, 0, 0);
+                    setupBrush();
+                }
+                img.src = currentDrawing;
+            }
+
+            function drawSilhouette() {
+                if (!silhouetteImage.complete || silhouetteImage.naturalWidth === 0) return;
+                
+                silhouetteCtx.clearRect(0, 0, silhouetteCanvas.width, silhouetteCanvas.height);
+                silhouetteCtx.save();
+                
+                const canvasAspect = silhouetteCanvas.width / silhouetteCanvas.height;
+                const imageAspect = silhouetteImage.width / silhouetteImage.height;
+                let drawWidth, drawHeight, x, y;
+
+                if (canvasAspect > imageAspect) {
+                    drawHeight = silhouetteCanvas.height * 0.9;
+                    drawWidth = drawHeight * imageAspect;
+                } else {
+                    drawWidth = silhouetteCanvas.width * 0.9;
+                    drawHeight = drawWidth / imageAspect;
+                }
+                
+                x = (silhouetteCanvas.width - drawWidth) / 2;
+                y = (silhouetteCanvas.height - drawHeight) / 2;
+
+                silhouetteCtx.drawImage(silhouetteImage, x, y, drawWidth, drawHeight);
+                silhouetteCtx.restore();
+            }
+
+            function draw(e) {
+                if (!isDrawing || !activeTool) return; // 도구가 활성화 되어있을 때만 그림
+                const [x, y] = getMousePos(e);
+                drawingCtx.beginPath();
+                drawingCtx.moveTo(lastX, lastY);
+                drawingCtx.lineTo(x, y);
+                drawingCtx.stroke();
+                [lastX, lastY] = [x, y];
+            }
+            
+            function getMousePos(e) {
+                const rect = drawingCanvas.getBoundingClientRect();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                return [
+                    (clientX - rect.left) * (drawingCanvas.width / rect.width),
+                    (clientY - rect.top) * (drawingCanvas.height / rect.height)
+                ];
+            }
+
+            const startDrawing = (e) => {
+                if (!activeTool) return;
+                isDrawing = true; 
+                [lastX, lastY] = getMousePos(e); 
+            };
+            const stopDrawing = () => {
+                if (isDrawing) {
+                    saveState();
+                }
+                isDrawing = false;
+            };
+            
+            drawingCanvas.addEventListener('mousedown', startDrawing);
+            drawingCanvas.addEventListener('mousemove', draw);
+            drawingCanvas.addEventListener('mouseup', stopDrawing);
+            drawingCanvas.addEventListener('mouseout', stopDrawing);
+            drawingCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e); });
+            drawingCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); });
+            drawingCanvas.addEventListener('touchend', (e) => { e.preventDefault(); stopDrawing(); });
+
+            function changeLanguage(lang) {
+                const translations = langData[lang];
+                elementsToTranslate.forEach(el => {
+                    const key = el.getAttribute('data-lang-key');
+                    if (translations[key]) el.textContent = translations[key];
+                });
+                placeholderElements.forEach(el => {
+                    const key = el.getAttribute('data-lang-placeholder');
+                    if(translations[key]) el.placeholder = translations[key];
+                });
+            }
+
+            function setupBrush() {
+                drawingCtx.lineCap = 'round';
+                drawingCtx.lineJoin = 'round';
+                drawingCtx.strokeStyle = activeColor;
+                drawingCtx.lineWidth = brushSizeInput.value;
+            }
+            
+            function setActiveTool(tool) {
+                if (activeTool === tool) { // 같은 도구를 다시 누르면 비활성화
+                    activeTool = null;
+                } else {
+                    activeTool = tool;
+                }
+
+                brushBtn.classList.toggle('active', activeTool === 'brush');
+                eraserBtn.classList.toggle('active', activeTool === 'eraser');
+                
+                if (activeTool === 'brush') {
+                    drawingCtx.globalCompositeOperation = 'source-over';
+                    mainColorPalette.style.opacity = 1;
+                    setupBrush();
+                } else if (activeTool === 'eraser') {
+                    drawingCtx.globalCompositeOperation = 'destination-out';
+                    mainColorPalette.style.opacity = 0.5;
+                } else {
+                    mainColorPalette.style.opacity = 1;
+                }
+            }
+            
+            function saveState() {
+                history = history.slice(0, historyStep + 1);
+                history.push(drawingCanvas.toDataURL());
+                historyStep++;
+                updateHistoryButtons();
+            }
+
+            function restoreState(step) {
+                const img = new Image();
+                img.onload = () => {
+                    drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                    drawingCtx.drawImage(img, 0, 0);
+                }
+                img.src = history[step];
+            }
+
+            function undo() {
+                if (historyStep > 0) {
+                    historyStep--;
+                    restoreState(historyStep);
+                    updateHistoryButtons();
+                }
+            }
+
+            function redo() {
+                if (historyStep < history.length - 1) {
+                    historyStep++;
+                    restoreState(historyStep);
+                    updateHistoryButtons();
+                }
+            }
+            
+            function updateHistoryButtons() {
+                undoBtn.disabled = historyStep <= 0;
+                redoBtn.disabled = historyStep >= history.length - 1;
+            }
+            
+            undoBtn.addEventListener('click', undo);
+            redoBtn.addEventListener('click', redo);
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.key === 'z' && !e.shiftKey) {
+                        e.preventDefault();
+                        undo();
+                    } else if ( (e.key === 'Z' && e.shiftKey) || (e.key === 'y') ) {
+                        e.preventDefault();
+                        redo();
+                    }
+                }
+            });
+
+            langSelector.addEventListener('change', (e) => changeLanguage(e.target.value));
+            brushSizeInput.addEventListener('input', (e) => { drawingCtx.lineWidth = e.target.value; });
+            brushBtn.addEventListener('click', () => setActiveTool('brush'));
+            eraserBtn.addEventListener('click', () => setActiveTool('eraser'));
+            
+            uploadImageBtn.addEventListener('click', () => imageUploadInput.click());
+            imageUploadInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        silhouetteImage.src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+                e.target.value = '';
+            });
+
+            function updateDeleteBtnVisibility() {
+                if (silhouetteImage.src === DEFAULT_SILHOUETTE_SRC) {
+                    deleteImageBtn.classList.add('hidden');
+                } else {
+                    deleteImageBtn.classList.remove('hidden');
+                }
+            }
+
+            deleteImageBtn.addEventListener('click', () => {
+                silhouetteImage.src = DEFAULT_SILHOUETTE_SRC;
+            });
+
+            // --- 내보내기 기능 ---
+            async function exportCanvas(exportType) {
+                const elementsToHide = [
+                    document.getElementById('header-controls'),
+                    document.getElementById('controls'),
+                    document.getElementById('export-buttons'),
+                    document.getElementById('color-box-palette')
+                ];
+
+                elementsToHide.forEach(el => el.style.visibility = 'hidden');
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                try {
+                    const exportArea = document.getElementById('capture-area');
+                    const canvas = await html2canvas(exportArea, { 
+                        backgroundColor: '#E3F2FD', // 배경색 지정
+                        useCORS: true,
+                        scale: 2,
+                    });
+
+                    if (exportType === 'png') {
+                        const link = document.createElement('a');
+                        link.download = 'character_matrix.png';
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                    } else if (exportType === 'pdf') {
+                        const { jsPDF } = window.jspdf;
+                        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                        const imgProps = pdf.getImageProperties(imgData);
+                        const pdfWidth = pdf.internal.pageSize.getWidth();
+                        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                        pdf.save('character_matrix.pdf');
+                    }
+                } finally {
+                    elementsToHide.forEach(el => el.style.visibility = 'visible');
+                }
+            }
+
+            document.getElementById('export-png-btn').addEventListener('click', () => exportCanvas('png'));
+            document.getElementById('export-pdf-btn').addEventListener('click', () => exportCanvas('pdf'));
+
+            document.getElementById('export-txt-btn').addEventListener('click', () => {
+                let textContent = `[인물 이름]\n${characterNameInput.value}\n\n`;
+                
+                document.querySelectorAll('textarea[data-id]').forEach(ta => {
+                    const id = ta.dataset.id;
+                    const titleKey = langData[langSelector.value][id] || id;
+                    textContent += `[${titleKey}]\n${ta.value}\n\n`;
+                });
+                const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${characterNameInput.value || '인물'}_matrix.txt`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+            });
+
+            // --- JSON 데이터 저장/복원 ---
+            document.getElementById('download-json-btn').addEventListener('click', () => {
+                const data = { 
+                    textData: {}, 
+                    characterName: characterNameInput.value,
+                    canvasData: drawingCanvas.toDataURL(),
+                    silhouetteSrc: silhouetteImage.src,
+                    colorBoxBorder: document.getElementById('color-box').style.borderColor,
+                    colorBoxBorderWidth: document.getElementById('color-box').style.borderWidth
+                };
+                document.querySelectorAll('textarea[data-id]').forEach(ta => {
+                    data.textData[ta.dataset.id] = ta.value;
+                });
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'character_matrix_data.json';
+                link.click();
+                URL.revokeObjectURL(link.href);
+            });
+
+            const jsonUploadInput = document.getElementById('json-upload-input');
+            document.getElementById('upload-json-btn').addEventListener('click', () => jsonUploadInput.click());
+            jsonUploadInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        characterNameInput.value = data.characterName || '';
+                        Object.keys(data.textData).forEach(key => {
+                            const textarea = document.querySelector(`textarea[data-id="${key}"]`);
+                            if (textarea) textarea.value = data.textData[key];
+                        });
+                        
+                        if(data.silhouetteSrc) {
+                            silhouetteImage.src = data.silhouetteSrc;
+                        }
+                        
+                        const colorBox = document.getElementById('color-box');
+                        colorBox.style.borderColor = data.colorBoxBorder || '#BBDEFB';
+                        colorBox.style.borderWidth = data.colorBoxBorderWidth || '2px';
+
+                        const img = new Image();
+                        img.onload = () => {
+                            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                            drawingCtx.drawImage(img, 0, 0);
+                            saveState();
+                        };
+                        img.src = data.canvasData;
+                    } catch (error) {
+                        alert(langSelector.value === 'KOR' ? '잘못된 파일 형식입니다.' : 'Invalid file format.');
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            });
+
+            // 초기화
+            window.addEventListener('resize', resizeCanvases);
+            changeLanguage('KOR');
+            updateHistoryButtons();
+            
+            setTimeout(() => {
+                saveState();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
